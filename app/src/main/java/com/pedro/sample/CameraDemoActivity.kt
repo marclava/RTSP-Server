@@ -5,10 +5,13 @@ import android.os.Environment
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.WindowManager
+import android.widget.AdapterView
 import android.widget.Button
+import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.pedro.encoder.input.video.CameraOpenException
+import com.pedro.rtsp.rtsp.VideoCodec
 import com.pedro.rtsp.utils.ConnectCheckerRtsp
 import com.pedro.rtspserver.RtspServerCamera1
 import kotlinx.android.synthetic.main.activity_camera_demo.*
@@ -17,28 +20,51 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
+
 class CameraDemoActivity : AppCompatActivity(), ConnectCheckerRtsp, View.OnClickListener,
     SurfaceHolder.Callback {
 
   private var rtspServerCamera1: RtspServerCamera1? = null
-  private var button: Button? = null
+  private var spResolution: Spinner? = null
+
+  private var bBitrate: Spinner? = null
+  private var bStartServer: Button? = null
   private var bRecord: Button? = null
+  private var bSwitchCamera: Button? = null
 
   private var currentDateAndTime = ""
   private val folder =
       File(Environment.getExternalStorageDirectory().absolutePath + "/rtmp-rtsp-stream-client-java")
+
+  private var camera: String? = null
+  private var resolution: String? = null
+  private var codec: String? = null
+  private var bitrate: Int? = null
+  private var fps: Int? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     setContentView(R.layout.activity_camera_demo)
 
-    button = findViewById(R.id.b_start_stop)
-    button?.setOnClickListener(this)
+    camera = intent.getStringExtra("camera")
+    resolution = intent.getStringExtra("resolution")
+    codec = intent.getStringExtra("codec")
+    bitrate = intent.getIntExtra("bitrate", 100)
+    fps = intent.getIntExtra("fps", 30)
+
+    bStartServer = findViewById(R.id.b_start_stop)
+    bStartServer?.setOnClickListener(this)
+
     bRecord = findViewById(R.id.b_record)
     bRecord?.setOnClickListener(this)
-    switch_camera.setOnClickListener(this)
-    rtspServerCamera1 = RtspServerCamera1(surfaceView, this, 1935)
+
+    bSwitchCamera = findViewById(R.id.b_switch_camera)
+    bSwitchCamera?.setOnClickListener(this)
+
+    rtspServerCamera1 = RtspServerCamera1(surfaceView, this, 8554)
+
+
     surfaceView.holder.addCallback(this)
   }
 
@@ -57,7 +83,7 @@ class CameraDemoActivity : AppCompatActivity(), ConnectCheckerRtsp, View.OnClick
       Toast.makeText(this@CameraDemoActivity, "Connection failed. $reason", Toast.LENGTH_SHORT)
           .show()
       rtspServerCamera1!!.stopStream()
-      button?.setText(R.string.start_button)
+      bStartServer?.setText(R.string.start_button)
     }
   }
 
@@ -71,7 +97,7 @@ class CameraDemoActivity : AppCompatActivity(), ConnectCheckerRtsp, View.OnClick
     runOnUiThread {
       Toast.makeText(this@CameraDemoActivity, "Auth error", Toast.LENGTH_SHORT).show()
       rtspServerCamera1?.stopStream()
-      button!!.setText(R.string.start_button)
+      bStartServer!!.setText(R.string.start_button)
       tv_url.text = ""
     }
   }
@@ -82,11 +108,28 @@ class CameraDemoActivity : AppCompatActivity(), ConnectCheckerRtsp, View.OnClick
     }
   }
 
+  fun onNothingSelected(parent: AdapterView<*>?) {
+    // TODO Auto-generated method stub
+  }
+
   override fun onClick(view: View) {
     when (view.id) {
+
       R.id.b_start_stop -> if (!rtspServerCamera1!!.isStreaming) {
-        if (rtspServerCamera1!!.isRecording || rtspServerCamera1!!.prepareAudio() && rtspServerCamera1!!.prepareVideo()) {
-          button!!.setText(R.string.stop_button)
+        if (codec == "HEVC") {
+          rtspServerCamera1!!.setVideoCodec(VideoCodec.H265)
+        }
+
+        val splitted = resolution!!.split("X")
+        val width = splitted[0].toInt()
+        val height = splitted[1].toInt()
+
+        // if (rtspServerCamera1!!.isRecording || rtspServerCamera1!!.prepareAudio() && rtspServerCamera1!!.prepareVideo()
+        if (rtspServerCamera1!!.isRecording || rtspServerCamera1!!.prepareAudio() && rtspServerCamera1!!.prepareVideo(
+            width, height, fps!!, bitrate!!*1024, false,
+            90)
+        ) {
+          bStartServer!!.setText(R.string.stop_button)
           rtspServerCamera1!!.startStream()
           tv_url.text = rtspServerCamera1?.getEndPointConnection()
         } else {
@@ -94,11 +137,12 @@ class CameraDemoActivity : AppCompatActivity(), ConnectCheckerRtsp, View.OnClick
               .show()
         }
       } else {
-        button!!.setText(R.string.start_button)
+        bStartServer!!.setText(R.string.start_button)
         rtspServerCamera1!!.stopStream()
         tv_url.text = ""
       }
-      R.id.switch_camera -> try {
+
+      R.id.b_switch_camera -> try {
         rtspServerCamera1!!.switchCamera()
       } catch (e: CameraOpenException) {
         Toast.makeText(this, e.message, Toast.LENGTH_SHORT).show()
@@ -159,7 +203,7 @@ class CameraDemoActivity : AppCompatActivity(), ConnectCheckerRtsp, View.OnClick
     }
     if (rtspServerCamera1!!.isStreaming) {
       rtspServerCamera1!!.stopStream()
-      button!!.text = resources.getString(R.string.start_button)
+      bStartServer!!.text = resources.getString(R.string.start_button)
       tv_url.text = ""
     }
     rtspServerCamera1!!.stopPreview()
